@@ -7,7 +7,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from models import CRNN
+from models import CRNN, BasicCRNN, ResNetCRNN
 from utils import create_data_transforms, CaptchaDataset
 
 
@@ -25,14 +25,30 @@ class CaptchaInference:
         # 加载模型
         checkpoint = torch.load(model_path, map_location=self.device)
         
-        # 创建模型实例（需要知道模型参数）
-        self.model = CRNN(
-            img_height=60,
-            img_width=160,
-            num_classes=62,  # 62个字符
-            hidden_size=256,
-            num_layers=2
-        )
+        # 尝试自动检测模型架构
+        model_state_keys = list(checkpoint['model_state_dict'].keys())
+        is_resnet = any('cnn.conv1' in key or 'cnn.0.weight' in key for key in model_state_keys)
+        
+        # 创建模型实例
+        if is_resnet and any('cnn.0.weight' in key for key in model_state_keys):
+            print("检测到ResNet架构模型")
+            self.model = ResNetCRNN(
+                img_height=60,
+                img_width=160,
+                num_classes=62,
+                hidden_size=256,
+                num_layers=2,
+                pretrained=False  # 推理时不需要预训练权重
+            )
+        else:
+            print("使用基础CRNN架构模型")
+            self.model = BasicCRNN(
+                img_height=60,
+                img_width=160,
+                num_classes=62,
+                hidden_size=256,
+                num_layers=2
+            )
         
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.to(self.device)

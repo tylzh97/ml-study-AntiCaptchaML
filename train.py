@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 import numpy as np
 from tqdm import tqdm
 
-from models import CRNN, CRNNLoss
+from models import CRNN, CRNNLoss, BasicCRNN, ResNetCRNN
 from utils import create_data_loaders
 
 
@@ -211,6 +211,15 @@ def main():
                         help='数据加载线程数')
     parser.add_argument('--resume', type=str, default='', 
                         help='恢复训练的检查点路径')
+    parser.add_argument('--backbone', type=str, default='resnet', 
+                        choices=['basic', 'resnet'], help='CNN骨干网络类型')
+    parser.add_argument('--pretrained', action='store_true', default=True,
+                        help='使用预训练权重 (仅对resnet有效)')
+    parser.add_argument('--freeze_backbone', type=str, default='early',
+                        choices=['none', 'all', 'early', 'partial'],
+                        help='ResNet骨干网络冻结策略 (仅对resnet有效)')
+    parser.add_argument('--backbone_lr_ratio', type=float, default=0.1,
+                        help='骨干网络相对学习率比例 (仅对resnet有效)')
     
     args = parser.parse_args()
     
@@ -228,20 +237,49 @@ def main():
     )
     
     # 模型
-    model = CRNN(
-        img_height=args.img_height,
-        img_width=args.img_width,
-        num_classes=train_dataset.num_classes,
-        hidden_size=args.hidden_size,
-        num_layers=args.num_layers
-    )
+    if args.backbone == 'basic':
+        model = BasicCRNN(
+            img_height=args.img_height,
+            img_width=args.img_width,
+            num_classes=train_dataset.num_classes,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers
+        )
+        print("使用基础CNN架构")
+    else:  # resnet
+        model = ResNetCRNN(
+            img_height=args.img_height,
+            img_width=args.img_width,
+            num_classes=train_dataset.num_classes,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            pretrained=args.pretrained
+        )
+        print(f"使用ResNet50架构，预训练权重: {args.pretrained}")
+        
+        # 应用冻结策略
+        model.freeze_backbone(args.freeze_backbone)
+    
     model.to(device)
     
     # 损失函数
     criterion = CRNNLoss()
     
-    # 优化器
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    # 优化器 - 对ResNet使用不同学习率
+    if args.backbone == 'resnet' and args.freeze_backbone != 'all':
+        # 获取参数组
+        param_groups = model.get_param_groups(args.backbone_lr_ratio)
+        optimizer_params = []
+        for group in param_groups:
+            optimizer_params.append({
+                'params': group['params'],
+                'lr': args.lr * group['lr_ratio']
+            })
+        optimizer = optim.Adam(optimizer_params, weight_decay=1e-4)
+        print(f"使用差分学习率: 主干网络lr={args.lr * args.backbone_lr_ratio:.6f}, 其他部分lr={args.lr:.6f}")
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        print(f"使用统一学习率: lr={args.lr:.6f}")
     
     # 学习率调度器
     scheduler = StepLR(optimizer, step_size=20, gamma=0.5)
