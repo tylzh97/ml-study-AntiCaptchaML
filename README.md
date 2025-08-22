@@ -171,6 +171,65 @@ uv run python convert_to_safetensors.py ./checkpoints/best.pth
 uv run python convert_to_safetensors.py ./checkpoints/ --batch --output_dir ./safetensor_models
 ```
 
+### 6. 渐进式训练（模型鲁棒性增强）
+
+#### 🎯 什么是渐进式训练？
+在基础模型训练完成后，使用更困难/畸变的数据继续训练，提升模型对复杂场景的识别能力。
+
+#### 🔥 生成困难数据集
+```bash
+# 生成困难验证码数据
+uv run python generate_hard_data.py --output_dir ./hard_data --num_samples 10000 --difficulty hard
+
+# 生成中等难度数据
+uv run python generate_hard_data.py --output_dir ./medium_data --num_samples 5000 --difficulty medium
+```
+
+**困难数据包含的畸变：**
+- 🌀 重度透视变换和弹性变形
+- 🔵 极端模糊（高斯模糊、运动模糊、散焦模糊）
+- 🎨 强光照变化和颜色失真
+- 📐 大量干扰线和遮挡块
+- 🔊 高强度噪声（高斯噪声、椒盐噪声）
+
+#### ⚡ 一键微调（推荐）
+```bash
+# 完整的渐进式微调流程
+uv run python finetune_model.py \
+    --pretrained_model ./checkpoints/best.safetensors \
+    --hard_samples 10000 \
+    --difficulty hard \
+    --finetune_epochs 25
+
+# 使用现有困难数据
+uv run python finetune_model.py \
+    --pretrained_model ./checkpoints/best.pth \
+    --skip_data_generation \
+    --hard_data_dir ./existing_hard_data
+```
+
+#### 🔧 手动渐进式训练
+```bash
+# 1. 先生成困难数据
+uv run python generate_hard_data.py --output_dir ./hard_data --num_samples 8000 --difficulty hard
+
+# 2. 渐进式训练
+uv run python progressive_train.py \
+    --pretrained_model ./checkpoints/best.safetensors \
+    --easy_data_root ./data \
+    --hard_data_root ./hard_data \
+    --num_epochs 30 \
+    --lr 5e-5 \
+    --warmup_epochs 5 \
+    --freeze_backbone partial
+```
+
+#### 📊 训练策略说明
+- **热身训练**: 前几个epoch使用极小学习率，避免破坏预训练特征
+- **双重验证**: 同时在原始和困难数据上验证，防止"灾难性遗忘"
+- **动态学习率**: 基于综合性能自动调整学习率
+- **安全保存**: 只有在保持原始性能的前提下提升困难数据性能才保存模型
+
 ## 模型架构
 
 ### 🏗️ 双架构支持
