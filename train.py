@@ -120,7 +120,7 @@ class Trainer:
         
         return avg_loss, char_accuracy, seq_accuracy
     
-    def save_checkpoint(self, epoch, val_loss, val_acc, is_best=False):
+    def save_checkpoint(self, epoch, val_loss, val_acc, is_best=False, save_format='pth'):
         """保存检查点"""
         checkpoint = {
             'epoch': epoch,
@@ -134,23 +134,71 @@ class Trainer:
             'val_accuracies': self.val_accuracies,
         }
         
+        # 根据格式选择文件扩展名
+        ext = 'safetensors' if save_format == 'safetensors' else 'pth'
+        
         # 保存最新检查点
-        latest_path = os.path.join(self.save_dir, 'latest.pth')
-        torch.save(checkpoint, latest_path)
+        latest_path = os.path.join(self.save_dir, f'latest.{ext}')
+        self._save_checkpoint_file(checkpoint, latest_path, save_format)
         
         # 保存最佳模型
         if is_best:
-            best_path = os.path.join(self.save_dir, 'best.pth')
-            torch.save(checkpoint, best_path)
-            print(f"保存最佳模型: val_acc={val_acc:.4f}")
+            best_path = os.path.join(self.save_dir, f'best.{ext}')
+            self._save_checkpoint_file(checkpoint, best_path, save_format)
+            print(f"保存最佳模型: val_acc={val_acc:.4f} (格式: {save_format})")
     
-    def train(self, train_loader, val_loader, dataset, num_epochs, save_every=5):
+    def _save_checkpoint_file(self, checkpoint, filepath, save_format):
+        """保存检查点文件"""
+        if save_format == 'safetensors':
+            try:
+                from safetensors.torch import save_file
+                
+                # SafeTensor只能保存张量，需要分别保存
+                # 1. 保存模型权重为safetensors
+                model_path = filepath
+                save_file(checkpoint['model_state_dict'], model_path)
+                
+                # 2. 保存其他元数据为json
+                import json
+                metadata_path = filepath.replace('.safetensors', '_metadata.json')
+                metadata = {
+                    'epoch': checkpoint['epoch'],
+                    'val_loss': checkpoint['val_loss'],
+                    'val_acc': checkpoint['val_acc'],
+                    'train_losses': checkpoint['train_losses'],
+                    'val_losses': checkpoint['val_losses'],
+                    'val_accuracies': checkpoint['val_accuracies'],
+                }
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                
+                # 3. 保存优化器状态为pth（safetensors不支持复杂对象）
+                optimizer_path = filepath.replace('.safetensors', '_optimizer.pth')
+                torch.save({
+                    'optimizer_state_dict': checkpoint['optimizer_state_dict'],
+                    'scheduler_state_dict': checkpoint['scheduler_state_dict'],
+                }, optimizer_path)
+                
+                print(f"✓ SafeTensor格式保存: {model_path}")
+                print(f"  - 模型权重: {model_path}")
+                print(f"  - 训练元数据: {metadata_path}")
+                print(f"  - 优化器状态: {optimizer_path}")
+                
+            except ImportError:
+                print("⚠️ safetensors库未安装，回退到PyTorch格式")
+                torch.save(checkpoint, filepath.replace('.safetensors', '.pth'))
+        else:
+            # 传统PyTorch格式
+            torch.save(checkpoint, filepath)
+    
+    def train(self, train_loader, val_loader, dataset, num_epochs, save_every=5, save_format='pth'):
         """完整训练循环"""
         best_val_acc = 0.0
         
         print(f"开始训练，共{num_epochs}个epoch")
         print(f"设备: {self.device}")
         print(f"模型参数量: {sum(p.numel() for p in self.model.parameters() if p.requires_grad):,}")
+        print(f"保存格式: {save_format}")
         
         for epoch in range(1, num_epochs + 1):
             start_time = time.time()
@@ -182,7 +230,7 @@ class Trainer:
                 best_val_acc = seq_acc
             
             if epoch % save_every == 0 or is_best:
-                self.save_checkpoint(epoch, val_loss, seq_acc, is_best)
+                self.save_checkpoint(epoch, val_loss, seq_acc, is_best, save_format)
         
         print(f"训练完成! 最佳验证准确率: {best_val_acc:.4f}")
 
@@ -220,6 +268,9 @@ def main():
                         help='ResNet骨干网络冻结策略 (仅对resnet有效)')
     parser.add_argument('--backbone_lr_ratio', type=float, default=0.1,
                         help='骨干网络相对学习率比例 (仅对resnet有效)')
+    parser.add_argument('--save_format', type=str, default='pth',
+                        choices=['pth', 'safetensors'], 
+                        help='模型保存格式')
     
     args = parser.parse_args()
     
@@ -301,7 +352,7 @@ def main():
         trainer.val_accuracies = checkpoint.get('val_accuracies', [])
     
     # 开始训练
-    trainer.train(train_loader, val_loader, train_dataset, args.num_epochs)
+    trainer.train(train_loader, val_loader, train_dataset, args.num_epochs, save_format=args.save_format)
 
 
 if __name__ == "__main__":

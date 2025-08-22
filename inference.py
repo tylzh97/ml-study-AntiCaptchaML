@@ -23,7 +23,10 @@ class CaptchaInference:
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         
         # 加载模型
-        checkpoint = torch.load(model_path, map_location=self.device)
+        if model_path.endswith('.safetensors'):
+            checkpoint = self._load_safetensor_checkpoint(model_path)
+        else:
+            checkpoint = torch.load(model_path, map_location=self.device)
         
         # 尝试自动检测模型架构
         model_state_keys = list(checkpoint['model_state_dict'].keys())
@@ -68,6 +71,45 @@ class CaptchaInference:
             print(f"模型训练epoch: {checkpoint['epoch']}")
         if 'val_acc' in checkpoint:
             print(f"验证准确率: {checkpoint['val_acc']:.4f}")
+    
+    def _load_safetensor_checkpoint(self, model_path):
+        """加载SafeTensor格式的检查点"""
+        try:
+            from safetensors.torch import load_file
+            import json
+            
+            # 加载模型权重
+            model_state_dict = load_file(model_path)
+            
+            # 加载元数据
+            metadata_path = model_path.replace('.safetensors', '_metadata.json')
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {}
+                print("⚠️ 未找到元数据文件，使用默认值")
+            
+            # 构造checkpoint格式
+            checkpoint = {
+                'model_state_dict': model_state_dict,
+                'epoch': metadata.get('epoch', 0),
+                'val_loss': metadata.get('val_loss', 0.0),
+                'val_acc': metadata.get('val_acc', 0.0),
+                'train_losses': metadata.get('train_losses', []),
+                'val_losses': metadata.get('val_losses', []),
+                'val_accuracies': metadata.get('val_accuracies', [])
+            }
+            
+            print(f"✓ 成功加载SafeTensor模型: {model_path}")
+            return checkpoint
+            
+        except ImportError:
+            print("❌ safetensors库未安装，请安装: pip install safetensors")
+            raise
+        except Exception as e:
+            print(f"❌ 加载SafeTensor模型失败: {e}")
+            raise
     
     def decode_prediction(self, indices):
         """CTC解码"""

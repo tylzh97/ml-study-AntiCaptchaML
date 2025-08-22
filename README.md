@@ -83,6 +83,9 @@ uv run python generate_data.py --output_dir ./data --num_samples 10000 --width 1
 # 基础训练 - 冻结早期层
 uv run python train.py --backbone resnet --freeze_backbone early --lr 1e-3 --batch_size 32 --num_epochs 50
 
+# 使用SafeTensors格式保存模型
+uv run python train.py --backbone resnet --freeze_backbone early --save_format safetensors
+
 # 适用于大数据集 - 完全微调
 uv run python train.py --backbone resnet --freeze_backbone none --lr 5e-4 --backbone_lr_ratio 0.5 --batch_size 16
 
@@ -105,6 +108,7 @@ uv run python train.py --backbone basic --lr 1e-3 --batch_size 32 --num_epochs 1
 - `--freeze_backbone`: ResNet冻结策略 (`none` | `all` | `early` | `partial`)
 - `--backbone_lr_ratio`: ResNet相对学习率比例（默认0.1）
 - `--pretrained`: 使用预训练权重（默认True）
+- `--save_format`: 模型保存格式 (`pth` | `safetensors`)
 - `--lr`: 基础学习率
 - `--batch_size`: 批次大小
 - `--num_epochs`: 训练轮数
@@ -145,6 +149,26 @@ uv run python inference.py --model_path ./checkpoints/best.pth --mode batch --im
 ```bash
 # 在测试集上评估模型性能
 uv run python inference.py --model_path ./checkpoints/best.pth --mode evaluate --data_root ./data --output_path eval_results.txt
+
+# 使用SafeTensor格式模型进行推理
+uv run python inference.py --model_path ./checkpoints/best.safetensors --mode single --image_path test.png
+```
+
+### 5. 模型格式转换
+
+#### SafeTensors格式优势
+- 🔒 **安全性**: 防止恶意代码注入，更安全的模型分发
+- ⚡ **加载速度**: 比PyTorch格式更快的加载速度
+- 💾 **存储优化**: 更紧凑的文件格式
+- 🔄 **跨平台兼容**: 支持多种深度学习框架
+
+#### 格式转换工具
+```bash
+# 单个模型转换
+uv run python convert_to_safetensors.py ./checkpoints/best.pth
+
+# 批量转换整个目录
+uv run python convert_to_safetensors.py ./checkpoints/ --batch --output_dir ./safetensor_models
 ```
 
 ## 模型架构
