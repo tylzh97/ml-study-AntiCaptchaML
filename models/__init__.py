@@ -1,4 +1,3 @@
-from .crnn import CRNN as BasicCRNN, CRNNLoss as BasicCRNNLoss
-from .crnn_resnet import CRNN, CRNNLoss, ResNetCRNN
+from .crnn import CRNN, CRNNLoss
 
-__all__ = ['CRNN', 'CRNNLoss', 'ResNetCRNN', 'BasicCRNN', 'BasicCRNNLoss']
+__all__ = ['CRNN', 'CRNNLoss']
