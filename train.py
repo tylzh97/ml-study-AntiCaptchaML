@@ -278,6 +278,12 @@ def main():
                         choices=['light', 'medium', 'heavy'],
                         help='数据增强强度')
     
+    # 学习率调度参数
+    parser.add_argument('--step_size', type=int, default=10,
+                        help='学习率衰减步长（每多少个epoch衰减一次）')
+    parser.add_argument('--gamma', type=float, default=0.7,
+                        help='学习率衰减因子')
+    
     args = parser.parse_args()
     
     # 设备
@@ -350,8 +356,9 @@ def main():
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
         print(f"使用统一学习率: lr={args.lr:.6f}")
     
-    # 学习率调度器
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.5)
+    # 学习率调度器 - 更频繁的衰减
+    scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+    print(f"学习率调度: 每{args.step_size}个epoch衰减至{args.gamma}倍")
     
     # 训练器
     trainer = Trainer(model, criterion, optimizer, scheduler, device, args.save_dir)
