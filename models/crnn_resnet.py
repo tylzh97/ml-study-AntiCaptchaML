@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,7 +26,25 @@ class ResNetCRNN(nn.Module):
         self.hidden_size = hidden_size
         
         # 使用ResNet50作为CNN骨干网络
-        resnet = models.resnet50(pretrained=pretrained)
+        if pretrained:
+            # 尝试加载预训练权重，支持离线模式
+            try:
+                resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+                print("✓ 成功加载在线预训练权重")
+            except Exception as e:
+                print(f"⚠️ 在线加载失败: {e}")
+                # 尝试从本地加载
+                local_model_path = "./pretrained/resnet50-0676ba61.pth"
+                if os.path.exists(local_model_path):
+                    resnet = models.resnet50(weights=None)
+                    state_dict = torch.load(local_model_path, map_location='cpu')
+                    resnet.load_state_dict(state_dict)
+                    print(f"✓ 成功从本地加载预训练权重: {local_model_path}")
+                else:
+                    print("❌ 未找到本地预训练权重，使用随机初始化")
+                    resnet = models.resnet50(weights=None)
+        else:
+            resnet = models.resnet50(weights=None)
         
         # 移除ResNet的全连接层和全局平均池化
         self.cnn = nn.Sequential(
