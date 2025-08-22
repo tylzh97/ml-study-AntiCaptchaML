@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from models import CRNN, CRNNLoss, BasicCRNN, ResNetCRNN
 from utils import create_data_loaders
+from utils.advanced_dataset import create_advanced_data_loaders
 
 
 class Trainer:
@@ -271,6 +272,11 @@ def main():
     parser.add_argument('--save_format', type=str, default='pth',
                         choices=['pth', 'safetensors'], 
                         help='模型保存格式')
+    parser.add_argument('--use_advanced_augment', action='store_true',
+                        help='使用高级数据增强（透视变换、弹性形变等）')
+    parser.add_argument('--augment_strength', type=str, default='medium',
+                        choices=['light', 'medium', 'heavy'],
+                        help='数据增强强度')
     
     args = parser.parse_args()
     
@@ -279,13 +285,25 @@ def main():
     print(f"使用设备: {device}")
     
     # 数据加载器
-    train_loader, val_loader, test_loader, train_dataset = create_data_loaders(
-        args.data_root,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        img_height=args.img_height,
-        img_width=args.img_width
-    )
+    if args.use_advanced_augment:
+        print(f"🚀 使用高级数据增强，强度: {args.augment_strength}")
+        train_loader, val_loader, test_loader, train_dataset = create_advanced_data_loaders(
+            args.data_root,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            img_height=args.img_height,
+            img_width=args.img_width,
+            augment_strength=args.augment_strength
+        )
+    else:
+        print("📊 使用基础数据增强")
+        train_loader, val_loader, test_loader, train_dataset = create_data_loaders(
+            args.data_root,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            img_height=args.img_height,
+            img_width=args.img_width
+        )
     
     # 模型
     if args.backbone == 'basic':
